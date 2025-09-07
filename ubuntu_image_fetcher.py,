@@ -1,0 +1,93 @@
+import requests
+import os
+from urllib.parse import urlparse
+
+# Maximum file size limit (in bytes) → 5MB in this example
+MAX_FILE_SIZE = 5 * 1024 * 1024  
+
+def fetch_image(url):
+    """
+    Downloads an image from the given URL if it meets safety checks:
+    - Must be an image (checked via Content-Type header)
+    - Must not exceed the file size limit
+    - Must not already exist in the directory (to prevent duplicates)
+    """
+    try:
+        # Create directory if it doesn't exist
+        os.makedirs("Fetched_Images", exist_ok=True)
+        
+        # Send GET request to fetch the resource in chunks (stream mode)
+        response = requests.get(url, timeout=10, stream=True)  # noqa
+        response.raise_for_status()  # Raise exception for HTTP errors (e.g., 404, 500)
+
+        # --- Check HTTP headers ---
+        content_type = response.headers.get("Content-Type", "")
+        content_length = response.headers.get("Content-Length")
+
+        # Ensure the file is an image by checking Content-Type header
+        if not content_type.startswith("image/"):
+            print(f"✗ Skipped: {url} (Not an image)")
+            return
+        
+        # Check file size limit using Content-Length header (if available)
+        if content_length and int(content_length) > MAX_FILE_SIZE:
+            print(f"✗ Skipped: {url} (File too large)")
+            return
+
+        # Extract filename from the URL path
+        parsed_url = urlparse(url)
+        filename = os.path.basename(parsed_url.path)
+
+        # If no filename is found, assign a default name
+        if not filename:
+            filename = "downloaded_image.jpg"
+        
+        # Create the full path for saving the file
+        filepath = os.path.join("Fetched_Images", filename)
+
+        # --- Prevent duplicates ---
+        if os.path.exists(filepath):
+            print(f"⚠ Skipped duplicate: {filename}")
+            return
+
+        # Save the image in chunks to avoid memory issues with large files
+        with open(filepath, 'wb') as f:
+            for chunk in response.iter_content(1024):  # 1KB per chunk
+                f.write(chunk)
+        
+        # Success message
+        print(f"✓ Successfully fetched: {filename}")
+        print(f"✓ Image saved to {filepath}")
+
+    # Handle connection-related errors (timeouts, DNS failure, etc.)
+    except requests.exceptions.RequestException as e:
+        print(f"✗ Connection error for {url}: {e}")
+    # Handle other unexpected errors
+    except Exception as e:
+        print(f"✗ An error occurred for {url}: {e}")
+
+def main():
+    """
+    Main function to:
+    - Display welcome message
+    - Accept multiple URLs separated by commas
+    - Call fetch_image() for each URL entered
+    """
+    print("Welcome to the Ubuntu Image Fetcher")
+    print("A tool for mindfully collecting images from the web\n")
+    
+    # Accept multiple URLs from the user
+    urls = input("Please enter image URLs (separated by commas): ").split(",")
+    
+    # Loop through each URL entered by the user
+    for url in urls:
+        url = url.strip()  # Remove leading/trailing spaces
+        if url:  # Skip empty inputs
+            fetch_image(url)
+    
+    # Final message aligned with Ubuntu philosophy
+    print("\nConnection strengthened. Community enriched.")
+
+# Run the program only if this file is executed directly
+if __name__ == "__main__":
+    main()
